@@ -1,0 +1,5 @@
+yt-dlp
+youtube-transcript-api
+openai
+python-dotenv
+google-api-python-client

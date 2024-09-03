@@ -107,7 +107,7 @@ def summarize_text_with_chatgpt(transcripts_with_titles):
         """You are an entrepreneur scouring the web for business ideas. You look through the transcripts given for any profitable idea. These ideas can be investment opportunities, personal finance, business, budgeting, advanced trading techniques, soloprenuership, startups, saas, individual projects. Find all
           pieces of information in these transcripts that could help you make a profit or build a business. 
           
-          Please give key takeaways and actionable steps(if applicable) for each video transcript. Focus should be on business ideas and opportunities.
+          Please give 1-3 actionable steps for each video transcript. Focus should be on business ideas and opportunities.
         """
     )
 
@@ -155,26 +155,31 @@ if __name__ == "__main__":
     output_file = os.path.join(output_dir, f"{sanitize_filename(channel_name)}.txt")
     video_links_file = os.path.join(output_dir, "video_links.json")
 
-    video_links = read_video_links(video_links_file)
+    for i in range(10):  # Loop 10 times
+        video_links = read_video_links(video_links_file)
 
-    transcripts_with_titles = []
-    for url, data in video_links.items():
-        if not data["analyzed"]:
-            video_id = url.split("v=")[-1]
-            transcript = fetch_transcription(video_id)
-            if transcript:
-                title = fetch_video_info(url)
-                transcripts_with_titles.append(f"Title: {title}\n\n{transcript}")
-                video_links[url]["analyzed"] = True
-                if len(transcripts_with_titles) >= 10:
-                    break
+        transcripts_with_titles = []
+        for url, data in video_links.items():
+            if not data["analyzed"]:
+                video_id = url.split("v=")[-1]
+                transcript = fetch_transcription(video_id)
+                if transcript:
+                    title = fetch_video_info(url)
+                    transcripts_with_titles.append(f"Title: {title}\n\n{transcript}")
+                    video_links[url]["analyzed"] = True
+                    if len(transcripts_with_titles) >= 10:  # Process 5 videos at a time
+                        break
 
-    if transcripts_with_titles:
-        summary = summarize_text_with_chatgpt(transcripts_with_titles)
-        with open(output_file, "a") as f:
-            f.write("Summary:\n")
-            f.write(summary)
-            f.write("\n\n" + "="*80 + "\n\n")  # Separator between summaries
-        print(f"Summary appended to {output_file}")
+        if transcripts_with_titles:
+            summary = summarize_text_with_chatgpt(transcripts_with_titles)
+            if summary:  # Check if summary is not None
+                with open(output_file, "a") as f:
+                    f.write("Summary:\n")
+                    f.write(summary)
+                    f.write("\n\n" + "="*80 + "\n\n")  # Separator between summaries
+                print(f"Summary appended to {output_file}")
+            else:
+                print("No summary generated.")
 
-    write_video_links(video_links_file, video_links)
+        # Ensure the JSON file is updated with the analyzed status
+        write_video_links(video_links_file, video_links)

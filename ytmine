@@ -1,0 +1,119 @@
+import yt_dlp as youtube_dl
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound
+from openai import OpenAI
+import os
+import re
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+api_key = os.getenv('OPENAI_API_KEY')
+
+client = OpenAI(api_key=api_key)
+
+def fetch_transcription(video_id):
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        transcription = " ".join([entry['text'] for entry in transcript_list])
+        print("Transcription fetched successfully.")
+        return transcription
+    except NoTranscriptFound:
+        print("No transcript found for this video.")
+        return None
+    except Exception as e:
+        print(f"Error fetching transcription: {e}")
+        return None
+
+def fetch_video_info(url):
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'format': 'best'
+    }
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=False)
+        title = info_dict.get('title', 'Unknown Title')
+        return title
+
+def create_thread():
+    try:
+        thread = client.beta.threads.create()
+        print(f"Thread created successfully: {thread.id}")
+        return thread.id
+    except Exception as e:
+        print("Error creating Thread:", e)
+        return None
+
+def add_message_to_thread(thread_id, content):
+    try:
+        message = client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=content
+        )
+        print(f"Message added to Thread successfully.")
+        return message
+    except Exception as e:
+        print("Error adding message to Thread:", e)
+        return None
+
+def create_and_poll_run(thread_id, instructions):
+    try:
+        run = client.beta.threads.runs.create_and_poll(
+            thread_id=thread_id,
+            assistant_id="asst_mPDA2MU2oNcgPyNa2LnssJsQ",  # Replace with your existing assistant ID
+            instructions=instructions,
+            response_format="auto"
+        )
+        print(f"Run created and completed successfully: {run.id}")
+
+        messages = client.beta.threads.messages.list(
+            thread_id=thread_id
+        )
+
+        for message in messages:
+            if message.role == 'assistant':
+                response_text = message.content[0].text.value
+                print("\nAssistant Response:")
+                print(response_text)
+                if response_text.strip():
+                    return response_text
+                else:
+                    print("Received an empty response.")
+                    return None
+    except Exception as e:
+        print("Error creating and polling Run:", e)
+        return None
+
+def summarize_text_with_chatgpt(transcript, title):
+    combined_text = f"Title: {title}\n\n{transcript}"
+    thread_id = create_thread()
+    if not thread_id:
+        return "Error creating thread."
+
+    detailed_instructions = (
+        """You are an analyst reviewing an earnings call transcript. Your task is to summarize the key financial metrics, management commentary, and any forward-looking statements. Focus on revenue, profit margins, expenses, and any significant changes or trends mentioned in the call.
+          
+          Please provide key takeaways and actionable insights for this earnings call transcript.
+        """
+    )
+
+    add_message_to_thread(thread_id, combined_text)
+    summary = create_and_poll_run(thread_id, detailed_instructions)
+    return summary
+
+if __name__ == "__main__":
+    video_url = input("Enter the YouTube video URL: ")
+    video_id = video_url.split("v=")[-1]
+
+    transcript = fetch_transcription(video_id)
+    if transcript:
+        title = fetch_video_info(video_url)
+        summary = summarize_text_with_chatgpt(transcript, title)
+        if summary:
+            print("\nSummary:\n")
+            print(summary)
+        else:
+            print("No summary generated.")
+    else:
+        print("Failed to fetch transcript.")
